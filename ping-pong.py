@@ -63,7 +63,7 @@ def recv_json(sock):
             line, buffer = buffer.split("\n", 1)
             yield json.loads(line)
 
-def handle_networking(role, paddle, opponent_paddle, ball, scores):
+def handle_networking(role, paddle, opponent_paddle, ball, scores, game_state):
     if role == 'host':
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind(('0.0.0.0', 12345))
@@ -77,7 +77,8 @@ def handle_networking(role, paddle, opponent_paddle, ball, scores):
                 'ball_y': ball.y,
                 'ball_speed_x': ball.speed_x,
                 'ball_speed_y': ball.speed_y,
-                'scores': scores
+                'scores': scores,
+                'game_running': game_state['running']
             }
             conn_file.write(json.dumps(data) + "\n")
             conn_file.flush()
@@ -98,6 +99,7 @@ def handle_networking(role, paddle, opponent_paddle, ball, scores):
             ball.speed_y = data['ball_speed_y']
             scores[0] = data['scores'][0]
             scores[1] = data['scores'][1]
+            game_state['running'] = data['game_running']
 
 def main(role):
     pygame.init()
@@ -110,8 +112,10 @@ def main(role):
     ball = Ball()
 
     scores = [0, 0]  # [Host score, Client score]
+    game_state = {'running': True}  # Control game state
+    space_pressed = False  # Prevent repeated toggles on a single press
 
-    networking_thread = threading.Thread(target=handle_networking, args=(role, paddle, opponent_paddle, ball, scores), daemon=True)
+    networking_thread = threading.Thread(target=handle_networking, args=(role, paddle, opponent_paddle, ball, scores, game_state), daemon=True)
     networking_thread.start()
 
     running = True
@@ -121,26 +125,36 @@ def main(role):
                 running = False
 
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP]:
-            paddle.move_up()
-        if keys[pygame.K_DOWN]:
-            paddle.move_down()
 
+        # Host can toggle game running state
         if role == 'host':
-            ball.move()
+            if keys[pygame.K_SPACE] and not space_pressed:
+                game_state['running'] = not game_state['running']
+                space_pressed = True
+            if not keys[pygame.K_SPACE]:
+                space_pressed = False
 
-            # Ball collision with paddles
-            if (ball.x <= paddle.x + PADDLE_WIDTH and paddle.y < ball.y < paddle.y + PADDLE_HEIGHT) or \
-               (ball.x + BALL_SIZE >= opponent_paddle.x and opponent_paddle.y < ball.y < opponent_paddle.y + PADDLE_HEIGHT):
-                ball.speed_x *= -1
+        if game_state['running']:
+            if keys[pygame.K_UP]:
+                paddle.move_up()
+            if keys[pygame.K_DOWN]:
+                paddle.move_down()
 
-            # Ball goes out of bounds
-            if ball.x <= 0:
-                scores[1] += 1  # Client scores
-                ball.reset()
-            elif ball.x >= SCREEN_WIDTH:
-                scores[0] += 1  # Host scores
-                ball.reset()
+            if role == 'host':
+                ball.move()
+
+                # Ball collision with paddles
+                if (ball.x <= paddle.x + PADDLE_WIDTH and paddle.y < ball.y < paddle.y + PADDLE_HEIGHT) or \
+                   (ball.x + BALL_SIZE >= opponent_paddle.x and opponent_paddle.y < ball.y < opponent_paddle.y + PADDLE_HEIGHT):
+                    ball.speed_x *= -1
+
+                # Ball goes out of bounds
+                if ball.x <= 0:
+                    scores[1] += 1  # Client scores
+                    ball.reset()
+                elif ball.x >= SCREEN_WIDTH:
+                    scores[0] += 1  # Host scores
+                    ball.reset()
 
         # Drawing
         screen.fill(BLACK)
@@ -152,6 +166,11 @@ def main(role):
         font = pygame.font.Font(None, 74)
         score_text = font.render(f"{scores[0]} - {scores[1]}", True, WHITE)
         screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, 10))
+
+        # Draw pause message if game is stopped
+        if not game_state['running']:
+            pause_text = font.render("Paused", True, WHITE)
+            screen.blit(pause_text, (SCREEN_WIDTH // 2 - pause_text.get_width() // 2, SCREEN_HEIGHT // 2 - pause_text.get_height() // 2))
 
         pygame.display.flip()
         clock.tick(FPS)
