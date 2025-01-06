@@ -63,7 +63,7 @@ def recv_json(sock):
             line, buffer = buffer.split("\n", 1)
             yield json.loads(line)
 
-def handle_networking(role, paddle, opponent_paddle, ball):
+def handle_networking(role, paddle, opponent_paddle, ball, scores):
     if role == 'host':
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind(('0.0.0.0', 12345))
@@ -76,7 +76,8 @@ def handle_networking(role, paddle, opponent_paddle, ball):
                 'ball_x': ball.x,
                 'ball_y': ball.y,
                 'ball_speed_x': ball.speed_x,
-                'ball_speed_y': ball.speed_y
+                'ball_speed_y': ball.speed_y,
+                'scores': scores
             }
             conn_file.write(json.dumps(data) + "\n")
             conn_file.flush()
@@ -95,6 +96,8 @@ def handle_networking(role, paddle, opponent_paddle, ball):
             ball.y = data['ball_y']
             ball.speed_x = data['ball_speed_x']
             ball.speed_y = data['ball_speed_y']
+            scores[0] = data['scores'][0]
+            scores[1] = data['scores'][1]
 
 def main(role):
     pygame.init()
@@ -106,7 +109,9 @@ def main(role):
     opponent_paddle = Paddle(SCREEN_WIDTH - 60 if role == 'host' else 50, SCREEN_HEIGHT // 2 - PADDLE_HEIGHT // 2)
     ball = Ball()
 
-    networking_thread = threading.Thread(target=handle_networking, args=(role, paddle, opponent_paddle, ball), daemon=True)
+    scores = [0, 0]  # [Host score, Client score]
+
+    networking_thread = threading.Thread(target=handle_networking, args=(role, paddle, opponent_paddle, ball, scores), daemon=True)
     networking_thread.start()
 
     running = True
@@ -130,7 +135,11 @@ def main(role):
                 ball.speed_x *= -1
 
             # Ball goes out of bounds
-            if ball.x <= 0 or ball.x >= SCREEN_WIDTH:
+            if ball.x <= 0:
+                scores[1] += 1  # Client scores
+                ball.reset()
+            elif ball.x >= SCREEN_WIDTH:
+                scores[0] += 1  # Host scores
                 ball.reset()
 
         # Drawing
@@ -138,8 +147,13 @@ def main(role):
         paddle.draw(screen)
         opponent_paddle.draw(screen)
         ball.draw(screen)
-        pygame.display.flip()
 
+        # Draw scores
+        font = pygame.font.Font(None, 74)
+        score_text = font.render(f"{scores[0]} - {scores[1]}", True, WHITE)
+        screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, 10))
+
+        pygame.display.flip()
         clock.tick(FPS)
 
     pygame.quit()
