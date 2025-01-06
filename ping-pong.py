@@ -2,6 +2,7 @@ import pygame
 import socket
 import threading
 import json
+import time
 
 # Game Constants
 SCREEN_WIDTH = 800
@@ -10,6 +11,7 @@ BALL_SIZE = 15
 PADDLE_WIDTH = 10
 PADDLE_HEIGHT = 100
 FPS = 60
+COLLISION_COOLDOWN = 0.1  # Cooldown in seconds
 
 # Colors
 WHITE = (255, 255, 255)
@@ -38,6 +40,7 @@ class Ball:
         self.y = SCREEN_HEIGHT // 2
         self.speed_x = 4
         self.speed_y = 4
+        self.last_collision_time = 0
 
     def move(self):
         self.x += self.speed_x
@@ -50,9 +53,20 @@ class Ball:
         self.x = SCREEN_WIDTH // 2
         self.y = SCREEN_HEIGHT // 2
         self.speed_x *= -1
+        self.last_collision_time = time.time()
 
     def draw(self, screen):
         pygame.draw.ellipse(screen, WHITE, (self.x, self.y, BALL_SIZE, BALL_SIZE))
+
+    def check_collision(self, paddle):
+        current_time = time.time()
+        if current_time - self.last_collision_time > COLLISION_COOLDOWN:
+            if self.x <= paddle.x + PADDLE_WIDTH and paddle.y < self.y < paddle.y + PADDLE_HEIGHT:
+                self.speed_x *= -1
+                self.last_collision_time = current_time
+            elif self.x + BALL_SIZE >= paddle.x and paddle.y < self.y < paddle.y + PADDLE_HEIGHT:
+                self.speed_x *= -1
+                self.last_collision_time = current_time
 
 def recv_json(sock):
     buffer = ""
@@ -142,11 +156,8 @@ def main(role):
 
             if role == 'host':
                 ball.move()
-
-                # Ball collision with paddles
-                if (ball.x <= paddle.x + PADDLE_WIDTH and paddle.y < ball.y < paddle.y + PADDLE_HEIGHT) or \
-                   (ball.x + BALL_SIZE >= opponent_paddle.x and opponent_paddle.y < ball.y < opponent_paddle.y + PADDLE_HEIGHT):
-                    ball.speed_x *= -1
+                ball.check_collision(paddle)
+                ball.check_collision(opponent_paddle)
 
                 # Ball goes out of bounds
                 if ball.x <= 0:
