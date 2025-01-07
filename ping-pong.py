@@ -206,6 +206,7 @@ class Host(Player):
                     print(f"Close the connection with {self.other_peer_name}")
                     continue
                 else:
+                    self.conn.send(f"start".encode())
                     print(f"Connected with {client_address}, player's name: {self.other_peer_name}")
                     self.game_main()
         except Exception as e:
