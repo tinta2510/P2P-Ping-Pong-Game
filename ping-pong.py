@@ -170,7 +170,7 @@ class Host(Player):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             while True:
-                msg = f'{self.peer_name} is here on port {self.listen_port}'
+                msg = f'{self.peer_name}|{self.listen_port}'
                 s.sendto(msg.encode(), (broadcast_addr, broadcast_port))
                 time.sleep(1)  # broadcast every 2 seconds
 
@@ -252,7 +252,7 @@ class Client(Player):
                 message, address = s.recvfrom(1024)
 
                 # take the player's name from the message
-                parts = message.decode().split(" ")
+                parts = message.decode().split("|")
                 player_name = parts[0]
                 player_port = int(parts[-1])
                 player = (player_name, address[0], player_port)
@@ -276,7 +276,7 @@ class Client(Player):
                     print(f"{idx}: {player}")
 
                 while True:
-                    player_idx = int(input(f"Choose a player to connect (0-{len(player_list) - 1})"))
+                    player_idx = int(input(f"Choose a player to connect (0-{len(player_list) - 1}): "))
                     if player_idx in range(len(player_list)):
                         print(f"Player chosen: {player_idx}")
                         print(f"Player chosen: {player_list[player_idx]}")
@@ -296,7 +296,11 @@ class Client(Player):
             continue
 
         try:
-            print("Connected to server. Waiting for the game to start...")
+            print("Connecting to the host...")
+            start_msg = self.client_socket.recv(1024).decode()
+            if start_msg == "start":
+                print("Connected to server. Game is starting...")
+                self.game_main()
             self.game_main()
         except Exception as e:
             print(f"Error: {e}")
@@ -328,11 +332,18 @@ class Client(Player):
         return False
 
 if __name__ == "__main__":
-    role = input("Enter 'host' to host the game or 'client' to join: ").strip().lower()
     peer_name = input("Enter your name: ").strip()
-    if role == 'host':
-        player = Host(peer_name)
-        player.run_host()
-    else:
-        player = Client(peer_name)
-        player.connect()
+    while True:
+        role = input("Enter 'host' to host the game or 'client' to join: ").strip().lower()
+        if role == 'host':
+            player = Host(peer_name)
+            player.run_host()
+            break
+        elif role == 'client':
+            player = Client(peer_name)
+            player.connect()
+            break
+        else:
+            print("Invalid role. Enter 'host' or 'client'.")
+    
+        
