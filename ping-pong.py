@@ -110,8 +110,11 @@ class Player:
                     ball.move()
 
                     # Ball collision with paddles
-                    if (ball.x <= paddle.x + PADDLE_WIDTH and paddle.y < ball.y < paddle.y + PADDLE_HEIGHT) or \
-                            (ball.x + BALL_SIZE >= opponent_paddle.x and opponent_paddle.y < ball.y < opponent_paddle.y + PADDLE_HEIGHT):
+                    # if (ball.x <= paddle.x + PADDLE_WIDTH and paddle.y < ball.y < paddle.y + PADDLE_HEIGHT) or \
+                    #         (ball.x + BALL_SIZE >= opponent_paddle.x and opponent_paddle.y < ball.y < opponent_paddle.y + PADDLE_HEIGHT):
+                    #     ball.speed_x *= -1
+                    if (ball.x == paddle.x + PADDLE_WIDTH and paddle.y < ball.y < paddle.y + PADDLE_HEIGHT) or \
+                            (opponent_paddle.x+5 >= ball.x + BALL_SIZE >= opponent_paddle.x and opponent_paddle.y < ball.y < opponent_paddle.y + PADDLE_HEIGHT):
                         ball.speed_x *= -1
 
                     # Ball goes out of bounds
@@ -127,6 +130,8 @@ class Player:
             paddle.draw(screen)
             opponent_paddle.draw(screen)
             ball.draw(screen)
+            
+            pygame.draw.line(screen, WHITE, (screen.get_width() // 2, 0), (screen.get_width() // 2, screen.get_height()), 5)
 
             # Draw scores
             font = pygame.font.Font(None, 74)
@@ -147,6 +152,7 @@ class Host(Player):
     def __init__(self, peer_name, listen_port=random.randint(10000, 60000), on_local_machine=True):
         super().__init__('host', peer_name, listen_port, on_local_machine)
         self.conn = None
+        self.is_broadcasting = True
 
     def handle_networking_host(self, paddle, opponent_paddle, ball, scores, game_state):
         conn_file = self.conn.makefile('rw')
@@ -169,7 +175,7 @@ class Host(Player):
         broadcast_addr = "255.255.255.255"
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            while True:
+            while self.is_broadcasting:
                 msg = f'{self.peer_name}|{self.listen_port}'
                 s.sendto(msg.encode(), (broadcast_addr, broadcast_port))
                 time.sleep(1)  # broadcast every 2 seconds
@@ -190,25 +196,20 @@ class Host(Player):
 
                 # ask the player if they want to play with the other player, if no, close the connection
                 while True:
-                    key = input(f"Do you want to play with {self.other_peer_name}? (y/n)")
+                    key = input(f"Do you want to play with player '{self.other_peer_name}'? (y/n)")
                     if key == "y":
-                        accept = True
+                        self.is_broadcasting = False
+                        self.conn.send("start".encode())
+                        print(f"Connected with {client_address}, player's name: {self.other_peer_name}")
+                        self.game_main()
                         break
                     elif key == "n":
-                        accept = False
+                        self.conn.send(f"{self.peer_name} has refused to play".encode())
+                        self.conn.close()
+                        print(f"Refused playing with {self.other_peer_name}")
                         break
                     else:
                         print("Invalid input. Please enter 'y' or 'n'")
-
-                if not accept:
-                    self.conn.send(f"{self.peer_name} has refused to play".encode())
-                    self.conn.close()
-                    print(f"Close the connection with {self.other_peer_name}")
-                    continue
-                else:
-                    self.conn.send(f"start".encode())
-                    print(f"Connected with {client_address}, player's name: {self.other_peer_name}")
-                    self.game_main()
         except Exception as e:
             print(f"Error: {e}")
             server_socket.close()
@@ -302,7 +303,6 @@ class Client(Player):
             if start_msg == "start":
                 print("Connected to server. Game is starting...")
                 self.game_main()
-            self.game_main()
         except Exception as e:
             print(f"Error: {e}")
             self.client_socket.close()
